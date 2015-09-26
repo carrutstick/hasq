@@ -20,9 +20,13 @@ parseObject le = do
 
 parseWithType :: I.Int8 -> Bool -> Get.Get KObject
 parseWithType tc le
-  | tc >= -19 && tc <  0 = fmap Atom   $ parseAtom   tc le
-  | tc  <  19 && tc >= 0 = fmap Vector $ parseVector tc le
-  | otherwise            = return $ Error "Unknown type"
+  | tc >= -19 && tc <   0  = fmap Atom   $ parseAtom   tc le
+  | tc  <  19 && tc >=  0  = fmap Vector $ parseVector tc le
+  | tc >=  20 && tc <=  76 = return $ Error "Enumerated types NYI"
+  | tc >=  77 && tc <=  97 = return $ Error "Nested types NYI"
+  | tc ==  98              = parseTable le
+  | tc ==  99              = parseDictOrKeyed le
+  | otherwise              = return $ Error "Unknown type, or NYI"
 
 parseAtom :: I.Int8 -> Bool -> Get.Get KAtom
 parseAtom tc le = case fromIntegral tc of
@@ -97,6 +101,22 @@ parseVectorLen tc le len = case tc of
         ui :: (Integral b, Num a, U.Unbox a, U.Unbox b)
            => Get.Get b -> Get.Get (U.Vector a)
         ui = fmap (U.map fromIntegral) . u
+
+parseDictOrKeyed :: Bool -> Get.Get KObject
+parseDictOrKeyed le = do
+    key <- parseObject le
+    val <- parseObject le
+    return $ case (key, val) of
+        (Vector k, Vector v) -> Dictionary (k, v)
+        (Table  k, Table  v) -> KeyTable   (k, v)
+
+parseTable :: Bool -> Get.Get KObject
+parseTable le = do
+    attr <- Get.getWord8
+    dict <- parseObject le
+    return $ case dict of
+        Dictionary (k, ListV v) -> Table (k, v)
+        _                       -> Error "Unable to parse table"
 
 -- TODO: find more efficient construction
 parseSym :: Get.Get BS.ByteString
